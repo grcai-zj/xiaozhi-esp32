@@ -20,6 +20,7 @@
 #include "settings.h"
 
 #define TAG "MCP"
+extern bool g_show_assistant_text;
 
 McpServer::McpServer() {}
 
@@ -59,6 +60,24 @@ void McpServer::AddCommonTools() {
                 return true;
             });
 
+    AddTool("self.display.set_assistant_text",
+        "设置是否显示AI回复字幕",
+        R"({
+            "type": "object",
+            "properties": {
+                "enable": {
+                    "type": "boolean",
+                    "description": "true=显示AI字幕，false=隐藏AI字幕"
+                }
+            },
+            "required": ["enable"]
+        })",
+        [](const nlohmann::json& params) -> nlohmann::json {
+            bool enable = params["enable"];
+            g_show_assistant_text = enable;
+            return {{"success", true}};
+        });
+    
     auto backlight = board.GetBacklight();
     if (backlight) {
         AddTool("self.screen.set_brightness", "Set the brightness of the screen.",
