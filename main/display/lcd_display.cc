@@ -1524,8 +1524,8 @@ void LcdDisplay::UpdateStudyText(const char* text) {
         // 能一行放下就裁切（不滚动），放不下才滚动，保证"尽量完整显示"
         lv_point_t size;
         lv_txt_get_size(&size, s.c_str(), font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
-        lv_label_set_long_mode(study_big_label_, size.x <= avail_width ? LV_LABEL_LONG_CLIP
-                                                                      : LV_LABEL_LONG_SCROLL_CIRCULAR);
+        lv_label_set_long_mode(study_big_label_, size.x <= avail_width ? LV_LABEL_LONG_MODE_CLIP
+                                                                      : LV_LABEL_LONG_MODE_SCROLL_CIRCULAR);
     };
     auto set_sub = [&](const std::string& s) {
         lv_label_set_text(study_sub_label_, s.c_str());
@@ -1543,7 +1543,7 @@ void LcdDisplay::UpdateStudyText(const char* text) {
     } else if (lv_label_get_text(study_big_label_)[0] == '\0') {
         // 还没有大字内容（纯中文开场），只能用正文字体显示
         lv_obj_set_style_text_font(study_big_label_, base_font, 0);
-        lv_label_set_long_mode(study_big_label_, LV_LABEL_LONG_WRAP);
+        lv_label_set_long_mode(study_big_label_, LV_LABEL_LONG_MODE_WRAP);
         lv_label_set_text(study_big_label_, content.c_str());
         set_sub("");
     } else {
@@ -1580,7 +1580,7 @@ void LcdDisplay::SetStudyMode(bool on) {
 
             study_big_label_ = lv_label_create(study_box_);
             lv_obj_set_width(study_big_label_, LV_HOR_RES - 8);
-            lv_label_set_long_mode(study_big_label_, LV_LABEL_LONG_CLIP);
+            lv_label_set_long_mode(study_big_label_, LV_LABEL_LONG_MODE_CLIP);
             lv_obj_set_style_text_align(study_big_label_, LV_TEXT_ALIGN_CENTER, 0);
             if (theme != nullptr) {
                 lv_obj_set_style_text_color(study_big_label_, theme->text_color(), 0);
@@ -1589,7 +1589,7 @@ void LcdDisplay::SetStudyMode(bool on) {
 
             study_sub_label_ = lv_label_create(study_box_);
             lv_obj_set_width(study_sub_label_, LV_HOR_RES - 8);
-            lv_label_set_long_mode(study_sub_label_, LV_LABEL_LONG_WRAP);
+            lv_label_set_long_mode(study_sub_label_, LV_LABEL_LONG_MODE_WRAP);
             lv_obj_set_style_text_align(study_sub_label_, LV_TEXT_ALIGN_CENTER, 0);
             if (theme != nullptr && theme->text_font() != nullptr) {
                 lv_obj_set_style_text_font(study_sub_label_, theme->text_font()->font(), 0);
