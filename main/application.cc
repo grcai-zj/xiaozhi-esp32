@@ -21,7 +21,7 @@
 #include <limits>
 
 #define TAG "Application"
-static bool g_show_assistant_text = true;
+bool g_show_assistant_text = true;
 
 Application::Application() : notify_player_(audio_service_) {
     event_group_ = xEventGroupCreate();
