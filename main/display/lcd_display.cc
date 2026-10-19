@@ -1132,11 +1132,18 @@ void LcdDisplay::SetChatMessage(const char* role, const char* content) {
     }
     lv_anim_delete(chat_message_label_, nullptr);
     lv_label_set_text(chat_message_label_, content);
+
+    // 学习模式：文字改到全屏大字层显示，底栏保持隐藏
+    const bool study_route = study_mode_ && role != nullptr && strcmp(role, "system") != 0;
+    if (study_route) {
+        UpdateStudyText(content);
+    }
+
     // Show bottom_bar_ only when there is content (and subtitle is not globally hidden)
     if (bottom_bar_ != nullptr) {
-        if (content == nullptr || content[0] == '\0') {
+        if (content == nullptr || content[0] == '\0' || hide_subtitle_ || study_route) {
             lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
-        } else if (!hide_subtitle_) {
+        } else {
             lv_obj_remove_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
         }
     }
@@ -1171,6 +1178,14 @@ void LcdDisplay::ClearChatMessages() {
     }
     if (bottom_bar_ != nullptr) {
         lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
+    }
+    // 学习模式大字层一并清空
+    if (study_big_label_ != nullptr) {
+        lv_label_set_text(study_big_label_, "");
+    }
+    if (study_sub_label_ != nullptr) {
+        lv_label_set_text(study_sub_label_, "");
+        lv_obj_add_flag(study_sub_label_, LV_OBJ_FLAG_HIDDEN);
     }
 }
 #endif
@@ -1419,9 +1434,191 @@ void LcdDisplay::SetHideSubtitle(bool hide) {
             // Only show if there is actual content to display
             const char* text =
                 (chat_message_label_ != nullptr) ? lv_label_get_text(chat_message_label_) : nullptr;
-            if (text != nullptr && text[0] != '\0') {
+            if (text != nullptr && text[0] != '\0' && !study_mode_) {
                 lv_obj_remove_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
             }
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// 学习模式：隐藏表情，把单词/短语用尽可能大的字号铺满屏幕（尽量单行）
+// ---------------------------------------------------------------------------
+
+// 可用的大字号字体（需要在 sdkconfig 里打开对应 LV_FONT_MONTSERRAT_xx）
+static const std::vector<const lv_font_t*>& StudyFonts() {
+    static std::vector<const lv_font_t*> fonts = [] {
+        std::vector<const lv_font_t*> list;
+#if defined(LV_FONT_MONTSERRAT_48) && LV_FONT_MONTSERRAT_48
+        list.push_back(&lv_font_montserrat_48);
+#endif
+#if defined(LV_FONT_MONTSERRAT_40) && LV_FONT_MONTSERRAT_40
+        list.push_back(&lv_font_montserrat_40);
+#endif
+#if defined(LV_FONT_MONTSERRAT_36) && LV_FONT_MONTSERRAT_36
+        list.push_back(&lv_font_montserrat_36);
+#endif
+#if defined(LV_FONT_MONTSERRAT_32) && LV_FONT_MONTSERRAT_32
+        list.push_back(&lv_font_montserrat_32);
+#endif
+#if defined(LV_FONT_MONTSERRAT_28) && LV_FONT_MONTSERRAT_28
+        list.push_back(&lv_font_montserrat_28);
+#endif
+#if defined(LV_FONT_MONTSERRAT_24) && LV_FONT_MONTSERRAT_24
+        list.push_back(&lv_font_montserrat_24);
+#endif
+        return list;
+    }();
+    return fonts;
+}
+
+static const lv_font_t* FindStudyFont(const char* text, int32_t max_width) {
+    for (auto font : StudyFonts()) {
+        lv_point_t size;
+        lv_txt_get_size(&size, text, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        if (size.x <= max_width) {
+            return font;
+        }
+    }
+    return StudyFonts().empty() ? nullptr : StudyFonts().back();
+}
+
+// 调用者必须已持有显示锁
+void LcdDisplay::UpdateStudyText(const char* text) {
+    if (study_big_label_ == nullptr || study_sub_label_ == nullptr) {
+        return;
+    }
+    auto theme = static_cast<LvglTheme*>(current_theme_);
+    if (theme == nullptr || theme->text_font() == nullptr) {
+        return;
+    }
+    const lv_font_t* base_font = theme->text_font()->font();
+
+    std::string content = (text != nullptr) ? text : "";
+    // 以第一个非 ASCII 字符为界：前半段（英文单词/拼写/音标）用大字，后半段（中文释义）用正文小字
+    size_t latin_end = 0;
+    while (latin_end < content.size() &&
+           static_cast<unsigned char>(content[latin_end]) < 0x80) {
+        latin_end++;
+    }
+    std::string latin = content.substr(0, latin_end);
+    std::string rest = content.substr(latin_end);
+    while (!latin.empty() && (latin.front() == ' ' || latin.front() == '\t' || latin.front() == '\n')) {
+        latin.erase(latin.begin());
+    }
+    while (!latin.empty() && (latin.back() == ' ' || latin.back() == '\t' || latin.back() == '\n')) {
+        latin.pop_back();
+    }
+    while (!rest.empty() && (rest.front() == ' ' || rest.front() == '\t' || rest.front() == '\n')) {
+        rest.erase(rest.begin());
+    }
+
+    const int32_t avail_width = LV_HOR_RES - 8;
+    auto set_big = [&](const std::string& s) {
+        const lv_font_t* font = FindStudyFont(s.c_str(), avail_width);
+        if (font == nullptr) {
+            font = base_font;
+        }
+        lv_obj_set_style_text_font(study_big_label_, font, 0);
+        lv_label_set_text(study_big_label_, s.c_str());
+        // 能一行放下就裁切（不滚动），放不下才滚动，保证"尽量完整显示"
+        lv_point_t size;
+        lv_txt_get_size(&size, s.c_str(), font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        lv_label_set_long_mode(study_big_label_, size.x <= avail_width ? LV_LABEL_LONG_CLIP
+                                                                      : LV_LABEL_LONG_SCROLL_CIRCULAR);
+    };
+    auto set_sub = [&](const std::string& s) {
+        lv_label_set_text(study_sub_label_, s.c_str());
+        if (s.empty()) {
+            lv_obj_add_flag(study_sub_label_, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_remove_flag(study_sub_label_, LV_OBJ_FLAG_HIDDEN);
+        }
+    };
+
+    if (!latin.empty()) {
+        // 英文单词/拼写/音标 → 大字；紧随其后的中文 → 小字
+        set_big(latin);
+        set_sub(rest);
+    } else if (lv_label_get_text(study_big_label_)[0] == '\0') {
+        // 还没有大字内容（纯中文开场），只能用正文字体显示
+        lv_obj_set_style_text_font(study_big_label_, base_font, 0);
+        lv_label_set_long_mode(study_big_label_, LV_LABEL_LONG_WRAP);
+        lv_label_set_text(study_big_label_, content.c_str());
+        set_sub("");
+    } else {
+        // 纯中文的下一句（解释）→ 保留大字单词，只在下面补充说明
+        set_sub(content);
+    }
+}
+
+void LcdDisplay::SetStudyMode(bool on) {
+    if (!setup_ui_called_) {
+        ESP_LOGW(TAG, "SetStudyMode(%d) called before SetupUI() - ignored", static_cast<int>(on));
+        return;
+    }
+    DisplayLockGuard lock(this);
+    study_mode_ = on;
+
+    if (on) {
+        if (study_box_ == nullptr) {
+            auto theme = static_cast<LvglTheme*>(current_theme_);
+            study_box_ = lv_obj_create(lv_screen_active());
+            lv_obj_set_size(study_box_, LV_HOR_RES, LV_VER_RES);
+            lv_obj_align(study_box_, LV_ALIGN_CENTER, 0, 0);
+            lv_obj_set_style_radius(study_box_, 0, 0);
+            lv_obj_set_style_pad_all(study_box_, 0, 0);
+            lv_obj_set_style_border_width(study_box_, 0, 0);
+            lv_obj_set_style_bg_opa(study_box_, LV_OPA_COVER, 0);
+            if (theme != nullptr) {
+                lv_obj_set_style_bg_color(study_box_, theme->background_color(), 0);
+            }
+            lv_obj_set_scrollbar_mode(study_box_, LV_SCROLLBAR_MODE_OFF);
+            lv_obj_set_flex_flow(study_box_, LV_FLEX_FLOW_COLUMN);
+            lv_obj_set_flex_align(study_box_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                                  LV_FLEX_ALIGN_CENTER);
+
+            study_big_label_ = lv_label_create(study_box_);
+            lv_obj_set_width(study_big_label_, LV_HOR_RES - 8);
+            lv_label_set_long_mode(study_big_label_, LV_LABEL_LONG_CLIP);
+            lv_obj_set_style_text_align(study_big_label_, LV_TEXT_ALIGN_CENTER, 0);
+            if (theme != nullptr) {
+                lv_obj_set_style_text_color(study_big_label_, theme->text_color(), 0);
+            }
+            lv_label_set_text(study_big_label_, "");
+
+            study_sub_label_ = lv_label_create(study_box_);
+            lv_obj_set_width(study_sub_label_, LV_HOR_RES - 8);
+            lv_label_set_long_mode(study_sub_label_, LV_LABEL_LONG_WRAP);
+            lv_obj_set_style_text_align(study_sub_label_, LV_TEXT_ALIGN_CENTER, 0);
+            if (theme != nullptr && theme->text_font() != nullptr) {
+                lv_obj_set_style_text_font(study_sub_label_, theme->text_font()->font(), 0);
+                lv_obj_set_style_text_color(study_sub_label_, theme->text_color(), 0);
+            }
+            lv_label_set_text(study_sub_label_, "");
+            lv_obj_add_flag(study_sub_label_, LV_OBJ_FLAG_HIDDEN);
+        }
+        lv_obj_remove_flag(study_box_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(study_box_);
+        if (emoji_box_ != nullptr) {
+            lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (bottom_bar_ != nullptr) {
+            lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
+        }
+        const char* current = (chat_message_label_ != nullptr) ? lv_label_get_text(chat_message_label_) : "";
+        UpdateStudyText(current);
+    } else {
+        if (study_box_ != nullptr) {
+            lv_obj_add_flag(study_box_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (emoji_box_ != nullptr) {
+            lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (bottom_bar_ != nullptr && !hide_subtitle_ && chat_message_label_ != nullptr &&
+            lv_label_get_text(chat_message_label_)[0] != '\0') {
+            lv_obj_remove_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+

@@ -59,6 +59,8 @@ public:
     virtual bool IsMonochrome() const { return false; }
     virtual bool SupportsGuiOperations() const { return false; }
     virtual void SetHideSubtitle(bool hide) { (void)hide; }
+    // 学习模式：隐藏表情，把单词/短语用大字号铺满屏幕显示
+    virtual void SetStudyMode(bool on) { (void)on; }
     virtual bool InsertAnimDialog(const char* name, uint32_t duration_ms) {
         (void)name;
         (void)duration_ms;

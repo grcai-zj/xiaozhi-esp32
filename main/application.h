@@ -124,7 +124,7 @@ public:
      * 由 MCP 工具 self.display.set_assistant_text 控制，
      * 打开后 tts/stt 的文本才会渲染到屏幕上，回到待机自动复位。
      */
-    void SetShowAssistantText(bool show) { show_assistant_text_ = show; }
+    void SetShowAssistantText(bool show);
     bool show_assistant_text() const { return show_assistant_text_; }
     
     /**

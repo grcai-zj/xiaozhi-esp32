@@ -1037,7 +1037,7 @@ void Application::HandleStateChangedEvent() {
             }
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(true);
-            show_assistant_text_ = false;  // 回到待机时字幕开关复位，避免一直显示
+            SetShowAssistantText(false);  // 回到待机：字幕和学习模式一起复位
             break;
         case kDeviceStateConnecting:
             display->SetStatus(Lang::Strings::CONNECTING);
@@ -1416,6 +1416,18 @@ void Application::SendMcpMessage(const std::string& payload) {
             mcp_broadcast_callback_(payload);
         }
     });
+}
+
+void Application::SetShowAssistantText(bool show) {
+    if (show_assistant_text_ == show) {
+        return;
+    }
+    show_assistant_text_ = show;
+    // 学习模式：打开字幕时同时切到大字界面（隐藏表情），关闭时恢复
+    auto display = Board::GetInstance().GetDisplay();
+    if (display != nullptr) {
+        display->SetStudyMode(show);
+    }
 }
 
 void Application::SetAecMode(AecMode mode) {
