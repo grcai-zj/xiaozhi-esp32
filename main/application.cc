@@ -21,6 +21,7 @@
 #include <limits>
 
 #define TAG "Application"
+static bool g_show_assistant_text = true;
 
 Application::Application() : notify_player_(audio_service_) {
     event_group_ = xEventGroupCreate();
@@ -661,7 +662,9 @@ void Application::InitializeProtocol() {
                     Schedule([display, message = std::string(text->valuestring),
                               glyphs = std::move(glyphs), bpp]() {
                         display->AddTextGlyphs(glyphs, bpp);
-                        display->SetChatMessage("assistant", message.c_str());
+                        if (g_show_assistant_text) {
+                                  display->SetChatMessage("assistant", message.c_str());
+                        }
                     });
                 }
             }
