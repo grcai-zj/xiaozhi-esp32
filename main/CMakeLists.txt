@@ -50,7 +50,6 @@ list(APPEND SOURCES
     "boards/common/board.cc"
     "boards/common/wifi_board.cc"
     "boards/common/ml307_board.cc"
-    "boards/common/nt26_board.cc"
     "boards/common/dual_network_board.cc"
     "boards/common/adc_battery_monitor.cc"
     "boards/common/axp2101.cc"
