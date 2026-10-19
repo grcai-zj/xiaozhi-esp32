@@ -21,7 +21,6 @@
 #include <limits>
 
 #define TAG "Application"
-bool g_show_assistant_text = true;
 
 Application::Application() : notify_player_(audio_service_) {
     event_group_ = xEventGroupCreate();
@@ -659,11 +658,12 @@ void Application::InitializeProtocol() {
                         glyphs.clear();
                     }
                     ESP_LOGI(TAG, "<< %s", text->valuestring);
-                    Schedule([display, message = std::string(text->valuestring),
+                    Schedule([this, display, message = std::string(text->valuestring),
                               glyphs = std::move(glyphs), bpp]() {
                         display->AddTextGlyphs(glyphs, bpp);
-                        if (g_show_assistant_text) {
-                                  display->SetChatMessage("assistant", message.c_str());
+                        // 只有开关打开时才渲染字幕（默认关闭，由 MCP 工具控制）
+                        if (show_assistant_text_) {
+                            display->SetChatMessage("assistant", message.c_str());
                         }
                     });
                 }
@@ -677,10 +677,13 @@ void Application::InitializeProtocol() {
                     glyphs.clear();
                 }
                 ESP_LOGI(TAG, ">> %s", text->valuestring);
-                Schedule([display, message = std::string(text->valuestring),
+                Schedule([this, display, message = std::string(text->valuestring),
                           glyphs = std::move(glyphs), bpp]() {
                     display->AddTextGlyphs(glyphs, bpp);
-                    display->SetChatMessage("user", message.c_str());
+                    // 用户自己的话也只在开关打开时显示
+                    if (show_assistant_text_) {
+                        display->SetChatMessage("user", message.c_str());
+                    }
                 });
             }
         } else if (strcmp(type->valuestring, "llm") == 0) {
@@ -1034,6 +1037,7 @@ void Application::HandleStateChangedEvent() {
             }
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(true);
+            show_assistant_text_ = false;  // 回到待机时字幕开关复位，避免一直显示
             break;
         case kDeviceStateConnecting:
             display->SetStatus(Lang::Strings::CONNECTING);

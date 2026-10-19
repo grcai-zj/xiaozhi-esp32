@@ -20,7 +20,6 @@
 #include "settings.h"
 
 #define TAG "MCP"
-extern bool g_show_assistant_text;
 
 McpServer::McpServer() {}
 
@@ -61,23 +60,18 @@ void McpServer::AddCommonTools() {
             });
 
     AddTool("self.display.set_assistant_text",
-        "设置是否显示AI回复字幕",
-        R"({
-            "type": "object",
-            "properties": {
-                "enable": {
-                    "type": "boolean",
-                    "description": "true=显示AI字幕，false=隐藏AI字幕"
-                }
-            },
-            "required": ["enable"]
-        })",
-        [](const nlohmann::json& params) -> nlohmann::json {
-            bool enable = params["enable"];
-            g_show_assistant_text = enable;
-            return {{"success", true}};
-        });
-    
+            "Show or hide the on-screen subtitles of the AI reply. Subtitles are hidden by "
+            "default. Turn them ON only when the user asks about a word's meaning, spelling, "
+            "IPA, word class or phonics practice and needs to read the text; turn them OFF "
+            "when that part is over and the conversation goes back to normal chat.",
+            PropertyList({Property("enabled", kPropertyTypeBoolean)}),
+            [](const PropertyList& properties) -> ReturnValue {
+                bool enabled = properties["enabled"].value<bool>();
+                Application::GetInstance().SetShowAssistantText(enabled);
+                ESP_LOGI(TAG, "Assistant subtitle display: %s", enabled ? "on" : "off");
+                return true;
+            });
+
     auto backlight = board.GetBacklight();
     if (backlight) {
         AddTool("self.screen.set_brightness", "Set the brightness of the screen.",

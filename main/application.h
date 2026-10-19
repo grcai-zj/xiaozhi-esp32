@@ -118,6 +118,14 @@ public:
     AecMode GetAecMode() const { return aec_mode_; }
     void PlaySound(const std::string_view& sound);
     AudioService& GetAudioService() { return audio_service_; }
+
+    /**
+     * 屏幕字幕开关（默认关闭）
+     * 由 MCP 工具 self.display.set_assistant_text 控制，
+     * 打开后 tts/stt 的文本才会渲染到屏幕上，回到待机自动复位。
+     */
+    void SetShowAssistantText(bool show) { show_assistant_text_ = show; }
+    bool show_assistant_text() const { return show_assistant_text_; }
     
     /**
      * Reset protocol resources (thread-safe)
@@ -155,6 +163,7 @@ private:
     bool assets_version_checked_ = false;
     bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
     bool pending_listening_start_ = false;  // Waiting for playback to drain before starting listening (auto mode)
+    bool show_assistant_text_ = false;      // 屏幕字幕开关，默认关闭
     int clock_ticks_ = 0;
     TaskHandle_t activation_task_handle_ = nullptr;
 
