@@ -62,10 +62,11 @@ static std::string ExtractEnglishWord(const char* text) {
         "new", "thanks", "thank", "morning", "evening", "night", "good", "great", "fine",
         "nice", "sure", "really", "very", "much", "many",
     };
+    // 只保留“明确的查词动词”，what/how/english 这类太泛，会把英文闲聊误判成查词
     static const char* const kCueWords[] = {
-        "what", "whats", "how", "spell", "spelling", "mean", "means", "meaning",
-        "pronounce", "pronunciation", "say", "translate", "translation", "define",
-        "definition", "explain", "difference", "english",
+        "spell", "spelling", "mean", "means", "meaning", "meanings",
+        "pronounce", "pronunciation", "say", "says", "translate", "translation",
+        "define", "definition", "explain", "explanation", "difference",
     };
     static const char* const kCueChinese[] = {
         "意思", "怎么拼", "怎么读", "音标", "翻译", "是什么", "啥意思", "词义", "解释", "造句",
@@ -118,14 +119,15 @@ static std::string ExtractEnglishWord(const char* text) {
     //   1) 有明确的查词提示（spell / mean / pronounce / 意思 / 怎么拼 ...）
     //   2) 以 what/how/which 开头的短问句（<= 4 个词），例如 "what is apple"
     //   3) 只说了 1 个词，例如 "apple"
-    bool starts_with_wh = false;
-    if (!tokens.empty()) {
-        const std::string& first = tokens[0].lower;
-        starts_with_wh = (first == "what" || first == "whats" || first == "how" ||
-                          first == "which" || first == "where");
-    }
-    const bool is_lookup = has_cue || (starts_with_wh && tokens.size() <= 4) ||
-                           tokens.size() == 1;
+    // 查词判定（英文智能体场景，尽量不误触英文闲聊）：
+    //   1) 有明确查词词：spell / mean / pronounce / translate / 怎么拼 ...
+    //   2) 整句就是那个词/短语（<= 2 个词），例如只说 "apple" 或 "ice cream"
+    //   3) 固定问句 "what is XXX"（正好 3 个词），例如 "what is apple"
+    const bool starts_with_what = !tokens.empty() &&
+                                  (tokens[0].lower == "what" || tokens[0].lower == "whats");
+    const bool short_lookup = tokens.size() <= 2;
+    const bool what_is_x = starts_with_what && tokens.size() == 3 && !tokens[2].stop;
+    const bool is_lookup = has_cue || short_lookup || what_is_x;
     if (!is_lookup) {
         return std::string();
     }
