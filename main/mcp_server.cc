@@ -60,15 +60,14 @@ void McpServer::AddCommonTools() {
             });
 
     AddTool("self.display.set_assistant_text",
-            "Show or hide the on-screen subtitles of the AI reply. Subtitles are hidden by "
-            "default. Turn them ON only when the user asks about a word's meaning, spelling, "
-            "IPA, word class or phonics practice and needs to read the text; turn them OFF "
-            "when that part is over and the conversation goes back to normal chat.",
+            "Deprecated: the on-screen word display is now automatic. Keep this only for "
+            "compatibility; it does not change the screen any more.",
             PropertyList({Property("enabled", kPropertyTypeBoolean)}),
             [](const PropertyList& properties) -> ReturnValue {
                 bool enabled = properties["enabled"].value<bool>();
-                Application::GetInstance().SetShowAssistantText(enabled);
-                ESP_LOGI(TAG, "Assistant subtitle display: %s", enabled ? "on" : "off");
+                // 字幕改为自动：用户在问英文单词时固件自己显示，模型不需要也不应该控制
+                ESP_LOGI(TAG, "set_assistant_text(%d) ignored, subtitle is automatic",
+                         static_cast<int>(enabled));
                 return true;
             });
 

@@ -23,54 +23,156 @@
 
 #define TAG "Application"
 
-// 从用户的一句话里挑出要重点显示的英文单词（忽略 what/is/how 这类问句常用词），
-// 例如 "what is apple" -> "apple"，"apple 是什么意思" -> "apple"。
+// 从用户的一句话里挑出要显示的英文单词/短语。
+// 只在“像查词”的句子里触发：句中有 what/how/spell/mean/意思/怎么拼 之类的提示词，
+// 或整句很短（例如只说了 "apple"）。普通英文聊天不会切成大字。
+// 例："what is apple" -> "apple"；"what's bug" -> "bug"；
+//     "what is bug report" -> "bug report"；"apple 是什么意思" -> "apple"。
+static bool IsOneOf(const std::string& value, const char* const* list, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        if (value == list[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static std::string ExtractEnglishWord(const char* text) {
     if (text == nullptr) {
         return std::string();
     }
-    static const char* kStopWords[] = {
-        "what", "whats", "is", "are", "was", "were", "the", "a", "an", "how", "do", "does",
-        "did", "you", "your", "spell", "spelling", "mean", "means", "meaning", "say", "says",
-        "pronounce", "pronunciation", "in", "english", "chinese", "this", "that", "it",
-        "please", "can", "could", "would", "tell", "me", "of", "word", "and", "to", "for",
-        "i", "my", "we", "read", "write", "translate", "sentence", "example", "use", "used",
-        "difference", "between", "vs", "why", "about", "with", "from", "some", "any", "not",
-        "yes", "no", "ok", "okay", "hey", "hello", "hi", "jason",
+    const std::string raw(text);
+
+    static const char* const kStopWords[] = {
+        "what", "whats", "where", "which", "who", "whom", "whose", "when", "why", "how",
+        "is", "are", "was", "were", "am", "be", "been", "being", "do", "does", "did",
+        "the", "a", "an", "this", "that", "these", "those", "it", "its", "they", "them",
+        "you", "your", "i", "me", "my", "we", "our", "he", "she", "his", "her",
+        "spell", "spelling", "mean", "means", "meaning", "meanings", "say", "says", "said",
+        "pronounce", "pronunciation", "translate", "translation", "define", "definition",
+        "explain", "explanation", "difference", "between", "vs", "english", "chinese",
+        "in", "of", "to", "for", "with", "from", "about", "on", "at", "by", "and", "or",
+        "please", "can", "could", "would", "should", "tell", "show", "give", "help",
+        "word", "words", "sentence", "example", "examples", "use", "used", "using",
+        "read", "write", "another", "other", "same", "different", "again", "more",
+        "some", "any", "not", "no", "yes", "ok", "okay", "hey", "hello", "hi", "jason",
+        "s", "t", "re", "ve", "ll", "d", "m",
+        // 闲聊里常见的词，避免把 "how are you today" / "what's up" 当成查词
+        "up", "down", "today", "tomorrow", "yesterday", "now", "later", "going", "doing",
+        "new", "thanks", "thank", "morning", "evening", "night", "good", "great", "fine",
+        "nice", "sure", "really", "very", "much", "many",
     };
-    std::string best;
-    const size_t n = strlen(text);
-    size_t i = 0;
-    while (i < n) {
-        while (i < n && !isalpha(static_cast<unsigned char>(text[i]))) {
+    static const char* const kCueWords[] = {
+        "what", "whats", "how", "spell", "spelling", "mean", "means", "meaning",
+        "pronounce", "pronunciation", "say", "translate", "translation", "define",
+        "definition", "explain", "difference", "english",
+    };
+    static const char* const kCueChinese[] = {
+        "意思", "怎么拼", "怎么读", "音标", "翻译", "是什么", "啥意思", "词义", "解释", "造句",
+    };
+
+    bool has_cue = false;
+    for (auto* cue : kCueChinese) {
+        if (raw.find(cue) != std::string::npos) {
+            has_cue = true;
+            break;
+        }
+    }
+
+    struct Token {
+        size_t start;
+        size_t length;
+        std::string lower;
+        bool stop;
+    };
+    std::vector<Token> tokens;
+    for (size_t i = 0; i < raw.size();) {
+        while (i < raw.size() && !isalpha(static_cast<unsigned char>(raw[i]))) {
             i++;
         }
         const size_t start = i;
-        while (i < n && (isalpha(static_cast<unsigned char>(text[i])) || text[i] == '\'')) {
+        while (i < raw.size() && (isalpha(static_cast<unsigned char>(raw[i])) || raw[i] == '\'')) {
             i++;
         }
         if (i == start) {
-            continue;
+            break;
         }
-        std::string word(text + start, i - start);
-        std::string lower = word;
+        std::string lower = raw.substr(start, i - start);
         for (auto& c : lower) {
             c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
         }
-        bool stop = false;
-        for (auto* s : kStopWords) {
-            if (lower == s) {
-                stop = true;
-                break;
+        if (lower.size() > 2 && lower.compare(lower.size() - 2, 2, "'s") == 0) {
+            lower.resize(lower.size() - 2);
+        }
+        if (!lower.empty() && lower.back() == '\'') {
+            lower.pop_back();
+        }
+        const bool stop = IsOneOf(lower, kStopWords, sizeof(kStopWords) / sizeof(kStopWords[0]));
+        if (IsOneOf(lower, kCueWords, sizeof(kCueWords) / sizeof(kCueWords[0]))) {
+            has_cue = true;
+        }
+        tokens.push_back({start, i - start, lower, stop});
+    }
+
+    // 判断这句话是不是在“查词”：
+    //   1) 有明确的查词提示（spell / mean / pronounce / 意思 / 怎么拼 ...）
+    //   2) 以 what/how/which 开头的短问句（<= 4 个词），例如 "what is apple"
+    //   3) 只说了 1 个词，例如 "apple"
+    bool starts_with_wh = false;
+    if (!tokens.empty()) {
+        const std::string& first = tokens[0].lower;
+        starts_with_wh = (first == "what" || first == "whats" || first == "how" ||
+                          first == "which" || first == "where");
+    }
+    const bool is_lookup = has_cue || (starts_with_wh && tokens.size() <= 4) ||
+                           tokens.size() == 1;
+    if (!is_lookup) {
+        return std::string();
+    }
+
+    // 把连续的非停用词组成短语，取字母总数最多的一组（并列时取靠后的）
+    std::string best;
+    size_t best_score = 0;
+    size_t run_begin = 0;
+    for (size_t k = 0; k <= tokens.size(); k++) {
+        const bool run_end = (k == tokens.size()) || tokens[k].stop;
+        if (!run_end) {
+            continue;
+        }
+        size_t letters = 0;
+        size_t words = 0;
+        for (size_t m = run_begin; m < k; m++) {
+            if (tokens[m].length >= 2) {
+                letters += tokens[m].length;
+                words++;
             }
         }
-        if (!stop && word.size() >= 2 && word.size() >= best.size()) {
-            best = word;
+        if (words > 0 && letters + (words - 1) * 2 >= best_score) {
+            std::string phrase;
+            size_t used = 0;
+            for (size_t m = run_begin; m < k && used < 3; m++) {
+                if (tokens[m].length < 2) {
+                    continue;
+                }
+                std::string word = raw.substr(tokens[m].start, tokens[m].length);
+                if (word.size() > 2 && word.compare(word.size() - 2, 2, "'s") == 0) {
+                    word.resize(word.size() - 2);
+                }
+                if (!phrase.empty()) {
+                    phrase += ' ';
+                }
+                phrase += word;
+                used++;
+            }
+            if (phrase.size() <= 24) {
+                best = phrase;
+                best_score = letters + (words - 1) * 2;
+            }
         }
+        run_begin = k + 1;
     }
     return best;
 }
-
 Application::Application() : notify_player_(audio_service_) {
     event_group_ = xEventGroupCreate();
 
@@ -707,13 +809,9 @@ void Application::InitializeProtocol() {
                         glyphs.clear();
                     }
                     ESP_LOGI(TAG, "<< %s", text->valuestring);
-                    Schedule([this, display, message = std::string(text->valuestring),
-                              glyphs = std::move(glyphs), bpp]() {
+                    // 学习模式下只保留用户问的那个词，不显示 AI 的解释；普通聊天也不显示字幕
+                    Schedule([display, glyphs = std::move(glyphs), bpp]() {
                         display->AddTextGlyphs(glyphs, bpp);
-                        // 只有开关打开时才渲染字幕（默认关闭，由 MCP 工具控制）
-                        if (show_assistant_text_) {
-                            display->SetChatMessage("assistant", message.c_str());
-                        }
                     });
                 }
             }
@@ -729,15 +827,15 @@ void Application::InitializeProtocol() {
                 // 用户这句话里如果有英文单词（比如 "What is apple"），自动进入学习模式，
                 // 把这个词放到屏幕正中用最大字号显示，不依赖大模型是否调用 MCP 工具
                 std::string focus = ExtractEnglishWord(text->valuestring);
-                Schedule([this, display, message = std::string(text->valuestring),
-                          glyphs = std::move(glyphs), bpp, focus]() {
+                Schedule([this, display, glyphs = std::move(glyphs), bpp, focus]() {
                     display->AddTextGlyphs(glyphs, bpp);
+                    // 用户一开口就回到表情界面（清掉上一个大字词）
+                    display->ClearChatMessages();
+                    SetShowAssistantText(false);
                     if (!focus.empty()) {
+                        // 这句话在问某个英文词/短语：只把这个词用大字显示出来
                         SetShowAssistantText(true);
                         display->SetChatMessage("assistant", focus.c_str());
-                    } else if (show_assistant_text_) {
-                        // 用户自己的话也只在开关打开时显示
-                        display->SetChatMessage("user", message.c_str());
                     }
                 });
             }
