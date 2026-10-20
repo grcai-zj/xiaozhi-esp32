@@ -85,6 +85,7 @@ static std::string ExtractEnglishWord(const char* text) {
         size_t length;
         std::string lower;
         bool stop;
+        bool quoted;  // 原词里带撇号（I'm / don't / o'clock），基本不是要查的词
     };
     std::vector<Token> tokens;
     for (size_t i = 0; i < raw.size();) {
@@ -112,7 +113,8 @@ static std::string ExtractEnglishWord(const char* text) {
         if (IsOneOf(lower, kCueWords, sizeof(kCueWords) / sizeof(kCueWords[0]))) {
             has_cue = true;
         }
-        tokens.push_back({start, i - start, lower, stop});
+        tokens.push_back({start, i - start, lower, stop,
+                          lower.find('\'') != std::string::npos});
     }
 
     // 判断这句话是不是在“查词”：
@@ -121,12 +123,24 @@ static std::string ExtractEnglishWord(const char* text) {
     //   3) 只说了 1 个词，例如 "apple"
     // 查词判定（英文智能体场景，尽量不误触英文闲聊）：
     //   1) 有明确查词词：spell / mean / pronounce / translate / 怎么拼 ...
-    //   2) 整句就是那个词/短语（<= 2 个词），例如只说 "apple" 或 "ice cream"
-    //   3) 固定问句 "what is XXX"（正好 3 个词），例如 "what is apple"
+    //   2) 整句就是那个词/短语（<= 2 个词，且不含 I'm / don't 这类缩写）
+    //   3) 固定问句 "what is <词>"（正好 3 个词，中间必须是 is/are）
     const bool starts_with_what = !tokens.empty() &&
                                   (tokens[0].lower == "what" || tokens[0].lower == "whats");
-    const bool short_lookup = tokens.size() <= 2;
-    const bool what_is_x = starts_with_what && tokens.size() == 3 && !tokens[2].stop;
+    bool quoted_content = false;
+    size_t content_words = 0;
+    for (const auto& token : tokens) {
+        if (!token.stop) {
+            content_words++;
+            if (token.quoted) {
+                quoted_content = true;
+            }
+        }
+    }
+    const bool short_lookup = tokens.size() <= 2 && content_words > 0 && !quoted_content;
+    const bool what_is_x = starts_with_what && tokens.size() == 3 &&
+                           (tokens[1].lower == "is" || tokens[1].lower == "are") &&
+                           !tokens[2].stop;
     const bool is_lookup = has_cue || short_lookup || what_is_x;
     if (!is_lookup) {
         return std::string();
