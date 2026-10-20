@@ -17,10 +17,59 @@
 #include <arpa/inet.h>
 #include <cJSON.h>
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <limits>
 
 #define TAG "Application"
+
+// 从用户的一句话里挑出要重点显示的英文单词（忽略 what/is/how 这类问句常用词），
+// 例如 "what is apple" -> "apple"，"apple 是什么意思" -> "apple"。
+static std::string ExtractEnglishWord(const char* text) {
+    if (text == nullptr) {
+        return std::string();
+    }
+    static const char* kStopWords[] = {
+        "what", "whats", "is", "are", "was", "were", "the", "a", "an", "how", "do", "does",
+        "did", "you", "your", "spell", "spelling", "mean", "means", "meaning", "say", "says",
+        "pronounce", "pronunciation", "in", "english", "chinese", "this", "that", "it",
+        "please", "can", "could", "would", "tell", "me", "of", "word", "and", "to", "for",
+        "i", "my", "we", "read", "write", "translate", "sentence", "example", "use", "used",
+        "difference", "between", "vs", "why", "about", "with", "from", "some", "any", "not",
+        "yes", "no", "ok", "okay", "hey", "hello", "hi", "jason",
+    };
+    std::string best;
+    const size_t n = strlen(text);
+    size_t i = 0;
+    while (i < n) {
+        while (i < n && !isalpha(static_cast<unsigned char>(text[i]))) {
+            i++;
+        }
+        const size_t start = i;
+        while (i < n && (isalpha(static_cast<unsigned char>(text[i])) || text[i] == '\'')) {
+            i++;
+        }
+        if (i == start) {
+            continue;
+        }
+        std::string word(text + start, i - start);
+        std::string lower = word;
+        for (auto& c : lower) {
+            c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        }
+        bool stop = false;
+        for (auto* s : kStopWords) {
+            if (lower == s) {
+                stop = true;
+                break;
+            }
+        }
+        if (!stop && word.size() >= 2 && word.size() >= best.size()) {
+            best = word;
+        }
+    }
+    return best;
+}
 
 Application::Application() : notify_player_(audio_service_) {
     event_group_ = xEventGroupCreate();
@@ -677,11 +726,17 @@ void Application::InitializeProtocol() {
                     glyphs.clear();
                 }
                 ESP_LOGI(TAG, ">> %s", text->valuestring);
+                // 用户这句话里如果有英文单词（比如 "What is apple"），自动进入学习模式，
+                // 把这个词放到屏幕正中用最大字号显示，不依赖大模型是否调用 MCP 工具
+                std::string focus = ExtractEnglishWord(text->valuestring);
                 Schedule([this, display, message = std::string(text->valuestring),
-                          glyphs = std::move(glyphs), bpp]() {
+                          glyphs = std::move(glyphs), bpp, focus]() {
                     display->AddTextGlyphs(glyphs, bpp);
-                    // 用户自己的话也只在开关打开时显示
-                    if (show_assistant_text_) {
+                    if (!focus.empty()) {
+                        SetShowAssistantText(true);
+                        display->SetChatMessage("assistant", focus.c_str());
+                    } else if (show_assistant_text_) {
+                        // 用户自己的话也只在开关打开时显示
                         display->SetChatMessage("user", message.c_str());
                     }
                 });
