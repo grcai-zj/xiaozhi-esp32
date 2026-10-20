@@ -1206,7 +1206,6 @@ void Application::HandleStateChangedEvent() {
             }
             audio_service_.EnableVoiceProcessing(false);
             audio_service_.EnableWakeWordDetection(true);
-            SetShowAssistantText(false);  // 回到待机：字幕和学习模式一起复位
             break;
         case kDeviceStateConnecting:
             display->SetStatus(Lang::Strings::CONNECTING);
@@ -1597,6 +1596,20 @@ void Application::SetShowAssistantText(bool show) {
     if (display != nullptr) {
         display->SetStudyMode(show);
     }
+}
+
+void Application::ShowWordOnScreen(const std::string& word) {
+    auto display = Board::GetInstance().GetDisplay();
+    if (display == nullptr) {
+        return;
+    }
+    if (word.empty()) {
+        display->ClearChatMessages();
+        SetShowAssistantText(false);
+        return;
+    }
+    SetShowAssistantText(true);
+    display->SetChatMessage("assistant", word.c_str());
 }
 
 void Application::SetAecMode(AecMode mode) {

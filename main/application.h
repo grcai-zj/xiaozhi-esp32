@@ -120,12 +120,14 @@ public:
     AudioService& GetAudioService() { return audio_service_; }
 
     /**
-     * 屏幕字幕开关（默认关闭）
-     * 由 MCP 工具 self.display.set_assistant_text 控制，
-     * 打开后 tts/stt 的文本才会渲染到屏幕上，回到待机自动复位。
+     * 屏幕大字开关（默认关闭）：由固件根据用户说的话自动判断，或由 MCP 工具
+     * self.screen.show_word 指定要显示的单词（拼读游戏用）。
      */
     void SetShowAssistantText(bool show);
     bool show_assistant_text() const { return show_assistant_text_; }
+
+    // 在大字界面上显示指定单词/短语；传空字符串则清空并恢复表情
+    void ShowWordOnScreen(const std::string& word);
     
     /**
      * Reset protocol resources (thread-safe)

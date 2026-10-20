@@ -59,6 +59,19 @@ void McpServer::AddCommonTools() {
                 return true;
             });
 
+    AddTool("self.screen.show_word",
+            "Show one word or a short phrase in large letters on the screen. Use it for "
+            "spelling/phonics games: call it with the word right before spelling it out, "
+            "and call it again with an empty string when the round is finished. Do not use "
+            "it for normal chat.",
+            PropertyList({Property("word", kPropertyTypeString)}),
+            [](const PropertyList& properties) -> ReturnValue {
+                auto word = properties["word"].value<std::string>();
+                Application::GetInstance().ShowWordOnScreen(word);
+                ESP_LOGI(TAG, "show_word: '%s'", word.c_str());
+                return true;
+            });
+
     AddTool("self.display.set_assistant_text",
             "Deprecated: the on-screen word display is now automatic. Keep this only for "
             "compatibility; it does not change the screen any more.",
