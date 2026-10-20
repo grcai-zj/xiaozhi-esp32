@@ -189,6 +189,44 @@ static std::string ExtractEnglishWord(const char* text) {
     }
     return best;
 }
+// 从 AI 的话里识别“逐字母拼读”：连续出现 3 个以上的单字母（A - P - P - L - E、
+// A. P. P. L. E.、C, A, T 等），把它们拼回单词并显示到大屏上。
+static std::string ExtractSpelledWord(const char* text) {
+    if (text == nullptr) {
+        return std::string();
+    }
+    const std::string raw(text);
+    std::string best;
+    std::string run;
+    size_t i = 0;
+    while (i < raw.size()) {
+        while (i < raw.size() && !isalpha(static_cast<unsigned char>(raw[i]))) {
+            i++;
+        }
+        const size_t start = i;
+        while (i < raw.size() && isalpha(static_cast<unsigned char>(raw[i]))) {
+            i++;
+        }
+        if (i == start) {
+            break;
+        }
+        if (i - start == 1) {
+            run += static_cast<char>(tolower(static_cast<unsigned char>(raw[start])));
+            if (run.size() > 12) {
+                run.clear();
+            }
+        } else {
+            if (run.size() >= 3 && run.size() > best.size()) {
+                best = run;
+            }
+            run.clear();
+        }
+    }
+    if (run.size() >= 3 && run.size() > best.size()) {
+        best = run;
+    }
+    return best;
+}
 Application::Application() : notify_player_(audio_service_) {
     event_group_ = xEventGroupCreate();
 
@@ -825,9 +863,15 @@ void Application::InitializeProtocol() {
                         glyphs.clear();
                     }
                     ESP_LOGI(TAG, "<< %s", text->valuestring);
-                    // 学习模式下只保留用户问的那个词，不显示 AI 的解释；普通聊天也不显示字幕
-                    Schedule([display, glyphs = std::move(glyphs), bpp]() {
+                    // 学习模式下只保留用户问的那个词，不显示 AI 的解释；普通聊天也不显示字幕。
+                    // 但如果 AI 正在逐字母拼读（A - P - P - L - E），自动把单词显示到大屏。
+                    std::string spelled = ExtractSpelledWord(text->valuestring);
+                    Schedule([this, display, glyphs = std::move(glyphs), bpp, spelled]() {
                         display->AddTextGlyphs(glyphs, bpp);
+                        if (!spelled.empty()) {
+                            ESP_LOGI(TAG, "Detected spelling, show '%s'", spelled.c_str());
+                            ShowWordOnScreen(spelled);
+                        }
                     });
                 }
             }
