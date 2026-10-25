@@ -1179,14 +1179,9 @@ void LcdDisplay::ClearChatMessages() {
     if (bottom_bar_ != nullptr) {
         lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
     }
-    // 学习模式大字层一并清空
-    if (study_big_label_ != nullptr) {
-        lv_label_set_text(study_big_label_, "");
-    }
-    if (study_sub_label_ != nullptr) {
-        lv_label_set_text(study_sub_label_, "");
-        lv_obj_add_flag(study_sub_label_, LV_OBJ_FLAG_HIDDEN);
-    }
+    // 注意：不清空学习模式的大字层。
+    // 回待机时会调用 ClearChatMessages()，之前把大字也清掉、但覆盖层没关，
+    // 结果就是“一片空白”。单词的保留/清除由 Application 决定。
 }
 #endif
 

@@ -1012,6 +1012,9 @@ void Application::StopListening() { xEventGroupSetBits(event_group_, MAIN_EVENT_
 void Application::HandleToggleChatEvent() {
     auto state = GetDeviceState();
 
+    // 按中键：不管当前在说什么，先把屏幕上的大字清掉，回到表情/Ready
+    ShowWordOnScreen("");
+
     if (state == kDeviceStateNotifying) {
         StopNotification();
         state = kDeviceStateIdle;
